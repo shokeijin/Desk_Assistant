@@ -1,59 +1,48 @@
 from langchain_openai import ChatOpenAI
-from langchain.agents import agent_executor, create_react_agent
+from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
-# Lädt die Umgebungsvariablen aus der .env Datei (insb. den API-Schlüssel)
 load_dotenv()
 
 def create_assistant():
     """
-    Erstellt und konfiguriert den LangChain Agenten.
+    Erstellt den Agenten, ohne den problematischen 'hub' zu importieren.
     """
-
-    # 1. Sprachmodell auswählen (hier gpt-4o-mini, wie in der Mindmap)
     llm = ChatOpenAI(model="gpt-4o-mini")
-
-    # 2. Werkzeuge definieren (vorerst leer, wird später erweitert)
-    # In Ihrer Mindmap sind dies "to do liste" und "Erinnerung"
     tools = []
 
-    # 3. System-Prompt definieren
-    # Dies gibt dem Agenten seine Persönlichkeit und Anweisungen.
-    # Der Prompt wird so aufgebaut, dass der Agent eine Liste von Werkzeugen
-    # und die Benutzereingabe erhält und darauf basierend entscheiden kann.
-    prompt_template = """
-    Du bist ein hilfreicher Desktop-Assistent. Antworte auf die folgende Anfrage so gut wie möglich.
+    # Wir definieren den Prompt manuell, anstatt ihn aus dem Hub zu laden.
+    # Dies ist der exakte Text, den 'hub.pull' herunterladen würde.
+    prompt_template = """Answer the following questions as best you can. You have access to the following tools:
 
-    Du hast Zugriff auf die folgenden Werkzeuge:
+{tools}
 
-    {tools}
+Use the following format:
 
-    Verwende das folgende Format:
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
 
-    Question: die Eingabefrage, auf die du antworten musst
-    Thought: Du solltest immer überlegen, was zu tun ist
-    Action: die auszuführende Aktion, sollte eines von [{tool_names}] sein
-    Action Input: die Eingabe für die Aktion
-    Observation: das Ergebnis der Aktion
-    ... (dieses Thought/Action/Action Input/Observation kann sich wiederholen)
-    Thought: Ich kenne jetzt die endgültige Antwort
-    Final Answer: die endgültige Antwort auf die ursprüngliche Eingabefrage
+Begin!
 
-    Beginne!
+Question: {input}
+Thought:{agent_scratchpad}"""
 
-    Question: {input}
-    Thought:{agent_scratchpad}
-    """
     prompt = ChatPromptTemplate.from_template(prompt_template)
 
-
-    # 4. Den Agenten erstellen
-    # create_react_agent ist ein gängiger Agententyp, der auf Basis von Beobachtungen "reagiert"
+    # Der Rest des Codes ist identisch
     agent = create_react_agent(llm, tools, prompt)
 
-    # 5. Den Agent Executor erstellen, der den Agenten ausführt
-    # verbose=True sorgt dafür, dass wir die "Gedankengänge" des Agenten im Terminal sehen
-    executor = agent_executor.AgentExecutor(agent=agent, tools=tools, verbose=True)
-
+    executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=True,
+        handle_parsing_errors=True
+    )
     return executor
