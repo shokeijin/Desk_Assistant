@@ -2,6 +2,8 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import ChatPromptTemplate
 from assistant.tools.todo_tools import add_todo, list_todos, delete_todo
+from assistant.tools.reminder_tools import add_reminder, list_reminders, delete_reminder
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,7 +11,18 @@ load_dotenv()
 def create_assistant():
     llm = ChatOpenAI(model="gpt-4o-mini")
 
-    tools = [add_todo, list_todos, delete_todo]
+    tools = [
+        add_todo,
+        list_todos,
+        delete_todo,
+        add_todo,
+        list_todos,
+        delete_todo,
+        add_reminder,
+        list_reminders,
+        delete_reminder
+    ]
+
 
     react_prompt = """
     Du bist ein hilfreicher Desktop-Assistent.

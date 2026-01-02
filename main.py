@@ -8,7 +8,7 @@ if __name__ == "__main__":
 
     while True:
         # 1. Input: Benutzereingabe entgegennehmen
-        user_input = input("Ihre Frage: ")
+        user_input = input("Was kann ich für Sie tun: ")
 
         if user_input.lower() == 'exit':
             print("Auf Wiedersehen!")
