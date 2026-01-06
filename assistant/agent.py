@@ -3,9 +3,11 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_tool_calling_agent  # Geändert!
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableLambda
 
+from assistant.router import create_router
 from assistant.tools.todo_tools import add_todo, list_todos, delete_todo
 from assistant.tools.reminder_tools import add_reminder, list_reminders, delete_reminder
 from assistant.tools.user_profile_tools import show_user_profile, update_user_profile
@@ -14,13 +16,8 @@ load_dotenv()
 
 
 def create_assistant():
-    user_name = os.getenv("USER_NAME", "User")
-    assistant_tone = os.getenv("ASSISTANT_TONE", "neutral")
-
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.3
-    )
+    # 1. Setup LLM & Tools
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
 
     tools = [
         add_todo, list_todos, delete_todo,
@@ -28,32 +25,35 @@ def create_assistant():
         show_user_profile, update_user_profile
     ]
 
-    # Ein moderneres Prompt-Template für Tool Calling
+    # 2. Setup Agent Executor (Der "Spezialist" für Tools)
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"""You are a helpful desktop assistant.
-        Current Date/Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-        User name: {user_name}
-        Tone: {assistant_tone}
-
-        You have access to tools to manage todos, reminders and user profiles.
-        Always use the tools if the user asks for these actions."""),
+        ("system", f"""You are a helpful assistant. 
+        Current time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        User: {os.getenv('USER_NAME', 'User')}"""),
         ("human", "{input}"),
-        # Das hier ist wichtig für Tool-Calling Agents:
         MessagesPlaceholder("agent_scratchpad"),
     ])
 
-    # Erstelle den Tool Calling Agent (stabiler als ReAct)
-    agent = create_tool_calling_agent(
-        llm=llm,
-        tools=tools,
-        prompt=prompt
-    )
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-    executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True
-        # handle_parsing_errors ist hier meist nicht mehr nötig
-    )
+    # 3. Setup Router
+    router = create_router()
 
-    return executor
+    # 4. Die Logik, die beides verbindet
+    def route_and_execute(inputs):
+        user_input = inputs["input"]
+
+        # Erst fragen wir den Router
+        decision = router.invoke({"input": user_input})
+        print(f"--- ROUTING: {decision.category.upper()} ---")
+
+        if decision.category == "chat":
+            # Direkt antworten ohne Tools
+            return {"output": llm.invoke(user_input).content}
+        else:
+            # Den Agent-Executor nutzen
+            return executor.invoke({"input": user_input})
+
+    # Wir geben ein Objekt zurück, das .invoke() versteht (wie dein altes main.py es erwartet)
+    return RunnableLambda(route_and_execute)
