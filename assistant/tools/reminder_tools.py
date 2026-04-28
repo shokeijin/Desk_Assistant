@@ -14,7 +14,6 @@ def add_reminder(input_text: str) -> str:
         text, datetime_str = input_text.split("|")
         text = text.strip()
         datetime_str = datetime_str.strip()
-
         remind_at = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
     except ValueError:
         return (
@@ -26,32 +25,42 @@ def add_reminder(input_text: str) -> str:
         )
 
     reminders = load_reminders()
+
+    # --- ÄNDERUNG HIER: 'done' Flag hinzufügen ---
     reminders.append({
         "text": text,
         "time": remind_at.isoformat(),
-        "done": False
+        "done": False  # Wichtig für den neuen Überwachungsprozess
     })
 
     save_reminders(reminders)
-
     return f"⏰ Erinnerung gesetzt: {text} am {datetime_str}"
-
 
 
 @tool
 def list_reminders(dummy: str = "") -> str:
     """Listet alle Erinnerungen auf."""
     reminders = load_reminders()
-
     if not reminders:
         return "📭 Keine Erinnerungen vorhanden."
 
     lines = []
+    now = datetime.now()
     for i, r in enumerate(reminders):
-        time = datetime.fromisoformat(r["time"]).strftime("%d.%m.%Y %H:%M")
-        lines.append(f"{i+1}. {time} – {r['text']}")
+        time_obj = datetime.fromisoformat(r["time"])
+        time_str = time_obj.strftime("%d.%m.%Y %H:%M")
+
+        # --- ÄNDERUNG HIER: Visueller Hinweis für den Status ---
+        status = ""
+        if r.get("done", False):
+            status = "✅ (Erledigt)"
+        elif time_obj < now:
+            status = "🕒 (Vergangenheit)"
+
+        lines.append(f"{i + 1}. {time_str} – {r['text']} {status}")
 
     return "⏰ Deine Erinnerungen:\n" + "\n".join(lines)
+
 
 @tool
 def delete_reminder(input_text: str) -> str:
@@ -60,13 +69,10 @@ def delete_reminder(input_text: str) -> str:
     Erwartet eine Zahl, z.B. "1"
     """
     reminders = load_reminders()
-
     try:
         index = int(input_text.strip())
         removed = reminders.pop(index - 1)
         save_reminders(reminders)
-        return f"🗑️ Erinnerung gelöscht: {removed}"
-    except ValueError:
-        return "❌ Bitte gib eine gültige Nummer an (z.B. 1)."
-    except IndexError:
-        return "❌ Diese Aufgabe existiert nicht."
+        return f"🗑️ Erinnerung gelöscht: {removed['text']}"
+    except (ValueError, IndexError):
+        return "❌ Bitte gib eine gültige Nummer der Erinnerung an."
