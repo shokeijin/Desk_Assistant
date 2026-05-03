@@ -12,8 +12,9 @@ def change_agent_name(new_name: str) -> str:
         return "❌ Bitte gib einen gültigen Namen an."
 
     settings = load_settings()
-    old_name = settings.get("agent_name", "Malvin")
-    settings["agent_name"] = new_name
+    # ✅ FIX: Fallback war "Malvin", jetzt korrekt "melvin"
+    old_name = settings.get("agent_name", "melvin")
+    settings["agent_name"] = new_name.lower().strip()
     save_settings(settings)
 
     return f"✅ Okay, ab jetzt höre ich auf den Namen '{new_name}'. Mein alter Name war '{old_name}'."

@@ -16,6 +16,19 @@ from assistant.storage.reminder_store import load_reminders, save_reminders
 from assistant.storage.settings_store import load_settings, save_settings
 from assistant import profile_manager
 
+# ==================================================
+# 🔧 DEBUG & TEST EINSTELLUNGEN
+# ==================================================
+# Auf True setzen um Debug-Ausgaben zu sehen:
+# [DEBUG] Gehört: 'melvin wie ist das wetter' | Wake-Word: 'melvin'
+DEBUG_MODE = False
+
+# Auf True setzen um Melvin ohne Mikrofon per Tastatur zu testen:
+# Du kannst Befehle direkt eintippen statt zu sprechen
+TEST_MODE = False
+# ==================================================
+
+
 # --- Setup für TTS und STT ---
 tts_engine = pyttsx3.init()
 
@@ -29,34 +42,42 @@ def speak(text):
 
 recognizer = sr.Recognizer()
 recognizer.dynamic_energy_threshold = True
-recognizer.pause_threshold = 1.0
+recognizer.pause_threshold = 1.5
 microphone = sr.Microphone()
 
 
-# --- MODIFIZIERTE LISTEN-FUNKTION ---
 def listen(prompt="", show_feedback=True):
     """
     Nimmt Audio auf und wandelt es in Text um.
-    Die Feedback-Ausgaben können jetzt abgeschaltet werden.
+    Im TEST_MODE wird stattdessen per Tastatur eingegeben.
     """
+    # --- TEST MODE: Tastatureingabe statt Mikrofon ---
+    if TEST_MODE:
+        if prompt:
+            print(prompt)
+        return input("  [TEST] Eingabe: ").lower()
+
+    # --- NORMAL MODE: Mikrofon ---
     with microphone as source:
         if prompt:
             print(prompt)
-
         try:
-            # Nur Feedback anzeigen, wenn gewünscht
             if show_feedback:
                 print("Höre zu...")
-            audio = recognizer.listen(source, timeout=5, phrase_time_limit=15)
+            audio = recognizer.listen(source, timeout=8, phrase_time_limit=30)
             if show_feedback:
                 print("Erkenne Sprache...")
             text = recognizer.recognize_google(audio, language="de-DE")
             return text.lower()
-        except (sr.WaitTimeoutError, sr.UnknownValueError, sr.RequestError):
+        except sr.WaitTimeoutError:
+            return ""
+        except sr.UnknownValueError:
+            return ""
+        except sr.RequestError:
+            print("[FEHLER] Spracherkennung nicht erreichbar. Bitte Internetverbindung prüfen.")
             return ""
 
 
-# --- Vollständige Hilfsfunktionen (unverändert) ---
 def check_reminders():
     """Diese Funktion läuft endlos im Hintergrund und prüft Erinnerungen."""
     while True:
@@ -65,25 +86,28 @@ def check_reminders():
         except ValueError:
             time.sleep(10)
             continue
-        reminders = load_reminders()
-        now = datetime.now()
-        something_changed = False
-        for reminder in reminders:
-            reminder_time = datetime.fromisoformat(reminder["time"])
-            if not reminder.get("done", False) and now >= reminder_time:
-                notification_text = f"Erinnerung: {reminder['text']}"
-                print(f"\n🔔 {notification_text}\n")
-                notification.notify(
-                    title='Desktop Assistant',
-                    message=reminder['text'],
-                    app_name='Desktop Assistant',
-                    timeout=15
-                )
-                speak(notification_text)
-                reminder["done"] = True
-                something_changed = True
-        if something_changed:
-            save_reminders(reminders)
+        try:
+            reminders = load_reminders()
+            now = datetime.now()
+            something_changed = False
+            for reminder in reminders:
+                reminder_time = datetime.fromisoformat(reminder["time"])
+                if not reminder.get("done", False) and now >= reminder_time:
+                    notification_text = f"Erinnerung: {reminder['text']}"
+                    print(f"\n🔔 {notification_text}\n")
+                    notification.notify(
+                        title='Desktop Assistant',
+                        message=reminder['text'],
+                        app_name='Desktop Assistant',
+                        timeout=15
+                    )
+                    speak(notification_text)
+                    reminder["done"] = True
+                    something_changed = True
+            if something_changed:
+                save_reminders(reminders)
+        except Exception as e:
+            print(f"[FEHLER] Reminder-Prüfung fehlgeschlagen: {e}")
         time.sleep(60)
 
 
@@ -121,28 +145,45 @@ if __name__ == "__main__":
     wake_word = settings.get("agent_name", "melvin").lower()
     reminder_thread = threading.Thread(target=check_reminders, daemon=True)
     reminder_thread.start()
-    ki_assistant = create_assistant()
 
-    # ✅ FIX: Kalibrierung in eigenem with-Block durchführen.
-    # Das Mikrofon wird danach wieder freigegeben, sodass listen() es nutzen kann.
-    with microphone as source:
-        print("Kalibriere Mikrofon für Umgebungsgeräusche...")
-        recognizer.adjust_for_ambient_noise(source, duration=2)
-    # ↑ Einzug entfernt – print ist jetzt AUSSERHALB des with-Blocks
-    print("Kalibrierung abgeschlossen.")
+    try:
+        ki_assistant = create_assistant()
+    except Exception as e:
+        print(f"[KRITISCHER FEHLER] Assistent konnte nicht gestartet werden: {e}")
+        print("Bitte prüfe deine .env Datei und API-Keys.")
+        exit(1)
 
-    speak(f"Assistent für Profil {profile_manager.get_active_profile()} ist bereit. Ich höre auf den Namen {wake_word}.")
+    if not TEST_MODE:
+        with microphone as source:
+            print("Kalibriere Mikrofon für Umgebungsgeräusche...")
+            recognizer.adjust_for_ambient_noise(source, duration=2)
+        print("Kalibrierung abgeschlossen.")
+
+    if TEST_MODE:
+        print("⚠️  TEST MODE AKTIV – Spracheingabe deaktiviert, Tastatur wird genutzt.")
+        print(f"Tippe '{wake_word} <dein befehl>' oder nur '{wake_word}' um einen Befehl zu starten.")
+    else:
+        speak(f"Assistent für Profil {profile_manager.get_active_profile()} ist bereit. Ich höre auf den Namen {wake_word}.")
+
     print(f"Assistent bereit. Sage '{wake_word}', um einen Befehl zu starten.")
     print("--------------------------------------------------")
 
     while True:
-        # Wir lauschen jetzt still im Hintergrund (show_feedback=False)
         heard_text = listen(show_feedback=False)
 
+        # --- DEBUG OUTPUT ---
+        if DEBUG_MODE and heard_text:
+            print(f"[DEBUG] Gehört: '{heard_text}' | Wake-Word: '{wake_word}'")
+
         if wake_word in heard_text:
-            speak("Ja?")
-            # Für den Befehl wollen wir das Feedback wieder sehen
-            command = listen(prompt="\nIch höre... was ist Ihr Befehl?", show_feedback=True)
+            command = heard_text.replace(wake_word, "").strip()
+
+            if command:
+                speak("Ja?")
+                print(f"-> Befehl: '{command}'")
+            else:
+                speak("Ja?")
+                command = listen(prompt="\nIch höre... was ist Ihr Befehl?", show_feedback=True)
 
             if not command:
                 speak("Ich habe nichts verstanden.")
@@ -152,37 +193,18 @@ if __name__ == "__main__":
                 speak("Auf Wiedersehen!")
                 break
 
-            print(f"-> Befehl: '{command}'")
-            result = ki_assistant.invoke({"input": command})
+            try:
+                result = ki_assistant.invoke({"input": command})
+                output = result.get('output', 'Ich habe leider keine Antwort darauf.')
+            except ConnectionError:
+                output = "Ich habe gerade keine Internetverbindung. Bitte später versuchen."
+                print("[FEHLER] Keine Verbindung zur API.")
+            except TimeoutError:
+                output = "Die Anfrage hat zu lange gedauert. Bitte nochmal versuchen."
+                print("[FEHLER] API Timeout.")
+            except Exception as e:
+                output = "Es ist ein Fehler aufgetreten. Bitte versuche es erneut."
+                print(f"[FEHLER] Unbekannter Fehler: {e}")
 
-            output = result.get('output', 'Ich habe leider keine Antwort darauf.')
             print(f"<- Antwort: {output}")
             speak(output)
-'''
-#Debug Version
-while True:
-    heard_text = listen(show_feedback=False)
-
-    # 🔍 DEBUG: Zeigt was erkannt wurde
-    if heard_text:
-        print(f"[DEBUG] Gehört: '{heard_text}' | Wake-Word: '{wake_word}'")
-
-    if wake_word in heard_text:
-        speak("Ja?")
-        command = listen(prompt="\nIch höre... was ist Ihr Befehl?", show_feedback=True)
-
-        if not command:
-            speak("Ich habe nichts verstanden.")
-            continue
-
-        if command.lower() == 'exit':
-            speak("Auf Wiedersehen!")
-            break
-
-        print(f"-> Befehl: '{command}'")
-        result = ki_assistant.invoke({"input": command})
-
-        output = result.get('output', 'Ich habe leider keine Antwort darauf.')
-        print(f"<- Antwort: {output}")
-        speak(output)
-'''
