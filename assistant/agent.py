@@ -17,6 +17,7 @@ from assistant.tools.reminder_tools import add_reminder, list_reminders, delete_
 from assistant.tools.user_profile_tools import show_user_profile, update_user_profile
 from assistant.tools.math_tools import calculator
 from assistant.tools.web_tools import web_search
+from assistant.tools.settings_tools import change_agent_name
 
 # load_dotenv() wird hier entfernt, da es jetzt in main.py ist
 # load_dotenv()
@@ -29,7 +30,8 @@ def create_assistant():
         add_reminder, list_reminders, delete_reminder,
         show_user_profile, update_user_profile,
         calculator,
-        web_search
+        web_search,
+        change_agent_name
     ]
     prompt = ChatPromptTemplate.from_messages([
         ("system", f"""You are a helpful assistant.
