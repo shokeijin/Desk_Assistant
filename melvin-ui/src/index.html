@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melvin</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Titelleiste zum Verschieben -->
+  <div class="titlebar" id="titlebar">
+    <span class="title-text">M.E.L.V.I.N</span>
+    <button class="close-btn" id="closeBtn">✕</button>
+  </div>
+
+  <!-- Hauptcontainer -->
+  <div class="container">
+
+    <!-- Gesicht -->
+    <div class="face-container">
+      <div class="face" id="face">
+        <!-- Scan-Linie -->
+        <div class="scanline"></div>
+
+        <!-- Augen -->
+        <div class="eyes">
+          <div class="eye left-eye" id="leftEye">
+            <div class="pupil" id="leftPupil"></div>
+            <div class="eye-glow"></div>
+          </div>
+          <div class="eye right-eye" id="rightEye">
+            <div class="pupil" id="rightPupil"></div>
+            <div class="eye-glow"></div>
+          </div>
+        </div>
+
+        <!-- Mund -->
+        <div class="mouth-container">
+          <svg class="mouth-svg" id="mouthSvg" viewBox="0 0 100 30" xmlns="http://www.w3.org/2000/svg">
+            <path id="mouthPath" d="M 20 15 Q 50 15 80 15" stroke="#00d4ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <!-- Wangen-LEDs -->
+        <div class="cheek left-cheek"></div>
+        <div class="cheek right-cheek"></div>
+      </div>
+
+      <!-- Status Ring -->
+      <div class="status-ring" id="statusRing"></div>
+    </div>
+
+    <!-- Status Text -->
+    <div class="status-label" id="statusLabel">BEREIT</div>
+
+    <!-- Antwort-Box -->
+    <div class="response-box">
+      <div class="response-text" id="responseText">Sage "Melvin" um zu starten...</div>
+    </div>
+
+    <!-- Visualizer -->
+    <div class="visualizer" id="visualizer">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

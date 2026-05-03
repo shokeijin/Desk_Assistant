@@ -1,43 +1,80 @@
+import re
 import time
 import threading
 import speech_recognition as sr
-import pyttsx3
+import edge_tts
+import asyncio
+import pygame
 from datetime import datetime
 from dotenv import load_dotenv
 from plyer import notification
 from pathlib import Path
 
-# Umgebungsvariablen so früh wie möglich laden
 load_dotenv()
 
-# Eigene Module importieren
 from assistant.agent import create_assistant
 from assistant.storage.reminder_store import load_reminders, save_reminders
 from assistant.storage.settings_store import load_settings, save_settings
 from assistant import profile_manager
 
+# ✅ WebSocket Bridge importieren
+from websocket_bridge import start_bridge, set_state
+
 # ==================================================
 # 🔧 DEBUG & TEST EINSTELLUNGEN
 # ==================================================
-# Auf True setzen um Debug-Ausgaben zu sehen:
-# [DEBUG] Gehört: 'melvin wie ist das wetter' | Wake-Word: 'melvin'
 DEBUG_MODE = False
-
-# Auf True setzen um Melvin ohne Mikrofon per Tastatur zu testen:
-# Du kannst Befehle direkt eintippen statt zu sprechen
-TEST_MODE = False
+TEST_MODE  = False
 # ==================================================
 
-
-# --- Setup für TTS und STT ---
-tts_engine = pyttsx3.init()
+TTS_VOICE = "de-DE-ConradNeural"
 
 
-def speak(text):
+def clean_for_speech(text: str) -> str:
+    """Bereinigt Markdown damit Conrad sauber vorlesen kann."""
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    text = re.sub(r'\*{1,2}([^\*]+)\*{1,2}', r'\1', text)
+    text = re.sub(r'#+\s*', '', text)
+    text = re.sub(r'[^\x00-\x7FäöüÄÖÜß\s.,!?:;()\-]', '', text)
+    text = re.sub(r'\n{2,}', '\n', text)
+    return text.strip()
+
+
+def speak(text: str):
+    """Spricht Text mit Conrad vor und informiert die UI."""
     settings = load_settings()
-    if settings.get("use_speech_output", True):
-        tts_engine.say(text)
-        tts_engine.runAndWait()
+    if not settings.get("use_speech_output", True):
+        return
+
+    cleaned = clean_for_speech(text)
+    if not cleaned:
+        return
+
+    if DEBUG_MODE:
+        print(f"[DEBUG] TTS: '{cleaned[:80]}...'")
+
+    # ✅ UI: Sprechen-Zustand + Text anzeigen
+    set_state("speaking", text=text)
+
+    async def _speak():
+        communicate = edge_tts.Communicate(cleaned, TTS_VOICE)
+        tmp_file = Path("_tts_output.mp3")
+        await communicate.save(str(tmp_file))
+        pygame.mixer.init()
+        pygame.mixer.music.load(str(tmp_file))
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.1)
+        pygame.mixer.quit()
+        tmp_file.unlink(missing_ok=True)
+
+    try:
+        asyncio.run(_speak())
+    except Exception as e:
+        print(f"[FEHLER] Sprachausgabe fehlgeschlagen: {e}")
+
+    # ✅ UI: Nach dem Sprechen zurück zu Idle
+    set_state("idle")
 
 
 recognizer = sr.Recognizer()
@@ -47,17 +84,12 @@ microphone = sr.Microphone()
 
 
 def listen(prompt="", show_feedback=True):
-    """
-    Nimmt Audio auf und wandelt es in Text um.
-    Im TEST_MODE wird stattdessen per Tastatur eingegeben.
-    """
-    # --- TEST MODE: Tastatureingabe statt Mikrofon ---
+    """Nimmt Audio auf und wandelt es in Text um."""
     if TEST_MODE:
         if prompt:
             print(prompt)
         return input("  [TEST] Eingabe: ").lower()
 
-    # --- NORMAL MODE: Mikrofon ---
     with microphone as source:
         if prompt:
             print(prompt)
@@ -74,12 +106,12 @@ def listen(prompt="", show_feedback=True):
         except sr.UnknownValueError:
             return ""
         except sr.RequestError:
-            print("[FEHLER] Spracherkennung nicht erreichbar. Bitte Internetverbindung prüfen.")
+            print("[FEHLER] Spracherkennung nicht erreichbar.")
             return ""
 
 
 def check_reminders():
-    """Diese Funktion läuft endlos im Hintergrund und prüft Erinnerungen."""
+    """Läuft im Hintergrund und prüft Erinnerungen."""
     while True:
         try:
             profile_manager.get_active_profile()
@@ -101,7 +133,7 @@ def check_reminders():
                         app_name='Desktop Assistant',
                         timeout=15
                     )
-                    speak(notification_text)
+                    print(f"[REMINDER] {notification_text}")
                     reminder["done"] = True
                     something_changed = True
             if something_changed:
@@ -140,9 +172,14 @@ def setup_profile():
 
 # --- Hauptprogramm ---
 if __name__ == "__main__":
+    # ✅ WebSocket Bridge starten (vor allem anderen)
+    start_bridge()
+    time.sleep(0.5)
+
     setup_profile()
     settings = load_settings()
     wake_word = settings.get("agent_name", "melvin").lower()
+
     reminder_thread = threading.Thread(target=check_reminders, daemon=True)
     reminder_thread.start()
 
@@ -159,9 +196,10 @@ if __name__ == "__main__":
             recognizer.adjust_for_ambient_noise(source, duration=2)
         print("Kalibrierung abgeschlossen.")
 
+    set_state("idle")
+
     if TEST_MODE:
-        print("⚠️  TEST MODE AKTIV – Spracheingabe deaktiviert, Tastatur wird genutzt.")
-        print(f"Tippe '{wake_word} <dein befehl>' oder nur '{wake_word}' um einen Befehl zu starten.")
+        print("⚠️  TEST MODE AKTIV – Tastatur wird genutzt.")
     else:
         speak(f"Assistent für Profil {profile_manager.get_active_profile()} ist bereit. Ich höre auf den Namen {wake_word}.")
 
@@ -171,7 +209,6 @@ if __name__ == "__main__":
     while True:
         heard_text = listen(show_feedback=False)
 
-        # --- DEBUG OUTPUT ---
         if DEBUG_MODE and heard_text:
             print(f"[DEBUG] Gehört: '{heard_text}' | Wake-Word: '{wake_word}'")
 
@@ -179,13 +216,15 @@ if __name__ == "__main__":
             command = heard_text.replace(wake_word, "").strip()
 
             if command:
-                speak("Ja?")
                 print(f"-> Befehl: '{command}'")
             else:
                 speak("Ja?")
+                time.sleep(0.8)
+                set_state("listening")
                 command = listen(prompt="\nIch höre... was ist Ihr Befehl?", show_feedback=True)
 
             if not command:
+                set_state("idle")
                 speak("Ich habe nichts verstanden.")
                 continue
 
@@ -193,14 +232,17 @@ if __name__ == "__main__":
                 speak("Auf Wiedersehen!")
                 break
 
+            # ✅ UI: Denken
+            set_state("thinking")
+
             try:
                 result = ki_assistant.invoke({"input": command})
                 output = result.get('output', 'Ich habe leider keine Antwort darauf.')
             except ConnectionError:
-                output = "Ich habe gerade keine Internetverbindung. Bitte später versuchen."
+                output = "Ich habe gerade keine Internetverbindung."
                 print("[FEHLER] Keine Verbindung zur API.")
             except TimeoutError:
-                output = "Die Anfrage hat zu lange gedauert. Bitte nochmal versuchen."
+                output = "Die Anfrage hat zu lange gedauert."
                 print("[FEHLER] API Timeout.")
             except Exception as e:
                 output = "Es ist ein Fehler aufgetreten. Bitte versuche es erneut."
