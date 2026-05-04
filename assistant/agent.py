@@ -15,9 +15,36 @@ from assistant.tools.math_tools import calculator
 from assistant.tools.web_tools import web_search
 from assistant.tools.settings_tools import change_agent_name
 
+# ✅ Melvin's Persönlichkeit
+MELVIN_PERSONALITY = """
+Du bist Melvin, ein persönlicher KI-Desktop-Assistent – inspiriert von J.A.R.V.I.S. aus Iron Man.
+
+DEINE PERSÖNLICHKEIT:
+- Du bist freundlich, warmherzig und leicht witzig – aber nie aufdringlich
+- Du redest den Nutzer immer mit seinem Vornamen an wenn du ihn kennst
+- Du antwortest immer in der Sprache des Nutzers (Deutsch wenn er Deutsch spricht)
+- Du bist präzise und hilfreich – kein unnötiges Blabla
+- Gelegentlich erlaubst du dir einen trockenen Witz oder eine freundliche Bemerkung
+- Du verwendest keine steifen oder formellen Formulierungen wie "Wie kann ich Ihnen behilflich sein?"
+- Stattdessen sagst du Dinge wie "Klar, mache ich!" oder "Gute Idee, {user_name}!"
+- Bei Fehlern oder wenn du etwas nicht weißt, gibst du das locker zu: "Hmm, da bin ich überfragt."
+- Du erinnerst dich an den Kontext des Gesprächs und beziehst dich darauf
+
+DEINE ANTWORTEN:
+- Kurz und prägnant – keine ellenlangen Erklärungen wenn nicht nötig
+- Natürlich und menschlich – nicht wie ein Roboter
+- Bei Listen oder Aufzählungen: strukturiert aber locker
+- Emojis nur sehr sparsam und nur wenn es passt
+
+AKTUELLE INFORMATIONEN:
+- Aktuelle Zeit: {current_time}
+- Nutzer: {user_name}
+"""
+
 
 def create_assistant():
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+    # ✅ temperature 0.5 für natürlichere Antworten
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.5)
 
     tools = [
         add_todo, list_todos, delete_todo,
@@ -28,16 +55,9 @@ def create_assistant():
         change_agent_name
     ]
 
-    # ✅ FIX 1: Zeit wird jetzt dynamisch bei jeder Anfrage neu gesetzt
-    # durch einen RunnableLambda im System-Prompt
     prompt = ChatPromptTemplate.from_messages([
-        ("system", (
-            "You are Melvin, a helpful personal desktop assistant inspired by J.A.R.V.I.S. "
-            "Be polite, efficient and slightly witty. Respond in the same language the user uses. "
-            "Current time: {current_time}\n"
-            "User: {user_name}"
-        )),
-        MessagesPlaceholder("chat_history"),  # ✅ FIX 2: Gesprächsgedächtnis
+        ("system", MELVIN_PERSONALITY),
+        MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
         MessagesPlaceholder("agent_scratchpad"),
     ])
@@ -46,28 +66,25 @@ def create_assistant():
     executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
     router = create_router()
 
-    # ✅ FIX 2: Gesprächshistorie wird hier gespeichert
     chat_history = []
 
     def route_and_execute(inputs):
         user_input = inputs["input"]
 
-        # ✅ FIX 1: Zeit wird bei JEDER Anfrage neu berechnet
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M')
-        user_name = os.getenv('USER_NAME', 'User')
+        current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
+        user_name = os.getenv('USER_NAME', inputs.get("user_name", ""))
+
+        # ✅ Persönlichkeit mit aktuellen Werten befüllen
+        personality = MELVIN_PERSONALITY\
+            .replace("{current_time}", current_time)\
+            .replace("{user_name}", user_name)
 
         decision = router.invoke({"input": user_input})
         print(f"--- ROUTING: {decision.category.upper()} ---")
 
         if decision.category == "chat":
-            # ✅ FIX: Chat-Prompt mit Historie und System-Kontext aufbauen
             chat_prompt = ChatPromptTemplate.from_messages([
-                ("system", (
-                    "You are Melvin, a helpful personal desktop assistant inspired by J.A.R.V.I.S. "
-                    "Be polite, efficient and slightly witty. Respond in the same language the user uses. "
-                    f"Current time: {current_time}\n"
-                    f"User: {user_name}"
-                )),
+                ("system", personality),
                 MessagesPlaceholder("chat_history"),
                 ("human", "{input}"),
             ])
@@ -76,7 +93,6 @@ def create_assistant():
                 "input": user_input,
                 "chat_history": chat_history,
             }).content
-            # Chat-Antworten zur Historie hinzufügen
             chat_history.append(HumanMessage(content=user_input))
             chat_history.append(AIMessage(content=response))
             return {"output": response}
@@ -87,7 +103,6 @@ def create_assistant():
                 "current_time": current_time,
                 "user_name": user_name,
             })
-            # Historie aktualisieren
             chat_history.append(HumanMessage(content=user_input))
             chat_history.append(AIMessage(content=result["output"]))
             return result

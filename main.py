@@ -5,10 +5,13 @@ import speech_recognition as sr
 import edge_tts
 import asyncio
 import pygame
+import keyboard
 from datetime import datetime
 from dotenv import load_dotenv
 from plyer import notification
 from pathlib import Path
+
+
 
 load_dotenv()
 
@@ -16,22 +19,22 @@ from assistant.agent import create_assistant
 from assistant.storage.reminder_store import load_reminders, save_reminders
 from assistant.storage.settings_store import load_settings, save_settings
 from assistant import profile_manager
-
-# ✅ WebSocket Bridge importieren
 from websocket_bridge import start_bridge, set_state
+from admin_store import admin_exists, set_admin_pin, verify_admin_pin
+from admin_panel import run_admin_panel
 
 # ==================================================
 # 🔧 DEBUG & TEST EINSTELLUNGEN
 # ==================================================
-DEBUG_MODE = False
+DEBUG_MODE = True
 TEST_MODE  = False
 # ==================================================
 
 TTS_VOICE = "de-DE-ConradNeural"
+_admin_triggered = False
 
 
 def clean_for_speech(text: str) -> str:
-    """Bereinigt Markdown damit Conrad sauber vorlesen kann."""
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
     text = re.sub(r'\*{1,2}([^\*]+)\*{1,2}', r'\1', text)
     text = re.sub(r'#+\s*', '', text)
@@ -41,10 +44,12 @@ def clean_for_speech(text: str) -> str:
 
 
 def speak(text: str):
-    """Spricht Text mit Conrad vor und informiert die UI."""
-    settings = load_settings()
-    if not settings.get("use_speech_output", True):
-        return
+    try:
+        settings = load_settings()
+        if not settings.get("use_speech_output", True):
+            return
+    except ValueError:
+        pass
 
     cleaned = clean_for_speech(text)
     if not cleaned:
@@ -53,7 +58,6 @@ def speak(text: str):
     if DEBUG_MODE:
         print(f"[DEBUG] TTS: '{cleaned[:80]}...'")
 
-    # ✅ UI: Sprechen-Zustand + Text anzeigen
     set_state("speaking", text=text)
 
     async def _speak():
@@ -73,7 +77,6 @@ def speak(text: str):
     except Exception as e:
         print(f"[FEHLER] Sprachausgabe fehlgeschlagen: {e}")
 
-    # ✅ UI: Nach dem Sprechen zurück zu Idle
     set_state("idle")
 
 
@@ -84,7 +87,6 @@ microphone = sr.Microphone()
 
 
 def listen(prompt="", show_feedback=True):
-    """Nimmt Audio auf und wandelt es in Text um."""
     if TEST_MODE:
         if prompt:
             print(prompt)
@@ -110,8 +112,63 @@ def listen(prompt="", show_feedback=True):
             return ""
 
 
+def listen_for_name() -> str:
+    with microphone as source:
+        try:
+            audio = recognizer.listen(source, timeout=6, phrase_time_limit=5)
+            text = recognizer.recognize_google(audio, language="de-DE")
+            name = text.strip().split()[0].capitalize()
+            return name
+        except (sr.WaitTimeoutError, sr.UnknownValueError, sr.RequestError):
+            return ""
+
+
+# =====================
+# ✅ ADMIN HOTKEY (F12)
+# =====================
+
+def _on_f12():
+    """Wird aufgerufen wenn F12 gedrückt wird."""
+    global _admin_triggered
+    _admin_triggered = True
+
+
+def _setup_admin_pin():
+    """Einmalige PIN-Einrichtung beim ersten Start."""
+    print("\n🔐 Kein Admin-Account gefunden.")
+    print("Bitte richte jetzt eine 6-stellige Admin-PIN ein.")
+    while True:
+        pin = input("Neue PIN (6 Ziffern): ").strip()
+        if len(pin) != 6 or not pin.isdigit():
+            print("❌ Bitte genau 6 Ziffern eingeben.")
+            continue
+        confirm = input("PIN bestätigen: ").strip()
+        if pin != confirm:
+            print("❌ PINs stimmen nicht überein.")
+            continue
+        set_admin_pin(pin)
+        print("✅ Admin-PIN wurde gesetzt.\n")
+        return
+
+
+def _check_admin_trigger():
+    """Prüft ob F12 gedrückt wurde und startet Admin-Panel."""
+    global _admin_triggered
+    if not _admin_triggered:
+        return
+    _admin_triggered = False
+
+    print("\n🔐 Admin-Modus: PIN eingeben")
+    pin = input("PIN: ").strip()
+
+    if verify_admin_pin(pin):
+        print("✅ Zugriff gewährt.")
+        run_admin_panel()
+    else:
+        print("❌ Falsche PIN. Zugriff verweigert.")
+
+
 def check_reminders():
-    """Läuft im Hintergrund und prüft Erinnerungen."""
     while True:
         try:
             profile_manager.get_active_profile()
@@ -144,39 +201,81 @@ def check_reminders():
 
 
 def setup_profile():
-    """Fragt den Benutzer nach seinem Profil und erstellt es ggf."""
     profiles_path = Path(__file__).parent / "assistant" / "storage" / "profiles"
     profiles_path.mkdir(exist_ok=True)
     existing_profiles = [p.name for p in profiles_path.iterdir() if p.is_dir()]
-    if existing_profiles:
-        print("Verfügbare Profile: " + ", ".join(existing_profiles))
+
+    with microphone as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+
     while True:
-        profile_name = input("Bitte gib deinen Profilnamen ein: ").strip()
+        if existing_profiles:
+            profiles_str = ", ".join(existing_profiles)
+            speak(f"Willkommen! Bekannte Profile sind: {profiles_str}. Wer bist du?")
+        else:
+            speak("Willkommen! Ich kenne dich noch nicht. Wie heißt du?")
+
+        print("👂 Warte auf Namenseingabe (Sprache oder Tastatur)...")
+        profile_name = listen_for_name()
+
         if not profile_name:
-            print("Der Name darf nicht leer sein.")
+            speak("Ich habe dich nicht verstanden. Bitte tippe deinen Namen ein.")
+            profile_name = input("Name: ").strip().capitalize()
+
+        if not profile_name:
+            speak("Der Name darf nicht leer sein. Bitte versuche es nochmal.")
             continue
+
+        print(f"[DEBUG] Erkannter Name: '{profile_name}'")
+
+        # Fuzzy-Matching
+        for existing in existing_profiles:
+            if existing.lower() == profile_name.lower():
+                profile_name = existing
+                break
+            if len(existing) >= 3 and len(profile_name) >= 3:
+                if existing.lower()[:3] == profile_name.lower()[:3]:
+                    print(f"[DEBUG] Fuzzy Match: '{profile_name}' → '{existing}'")
+                    profile_name = existing
+                    break
+
         if profile_name in existing_profiles:
             profile_manager.set_active_profile(profile_name)
+            speak(f"Schön dich wiederzusehen, {profile_name}!")
             return
         else:
-            create_new = input(f"Profil '{profile_name}' nicht gefunden. Möchtest du es erstellen? (j/n): ").lower()
-            if create_new == 'j':
+            speak(f"Ich kenne {profile_name} noch nicht. Soll ich ein neues Profil erstellen?")
+            print("Neues Profil erstellen? (ja/nein)")
+            answer = listen_for_name().lower()
+            if not answer:
+                answer = input("(ja/nein): ").strip().lower()
+
+            if answer in ["ja", "j", "yes"]:
                 (profiles_path / profile_name).mkdir()
                 profile_manager.set_active_profile(profile_name)
                 save_settings({})
+                speak(f"Perfekt! Ich habe ein Profil für {profile_name} erstellt. Schön dich kennenzulernen!")
                 return
             else:
-                print("Bitte wähle ein existierendes Profil.")
+                speak("Okay, lass es uns nochmal versuchen.")
                 continue
 
 
 # --- Hauptprogramm ---
 if __name__ == "__main__":
-    # ✅ WebSocket Bridge starten (vor allem anderen)
     start_bridge()
     time.sleep(0.5)
 
+    # ✅ Admin PIN einrichten falls noch nicht vorhanden
+    if not admin_exists():
+        _setup_admin_pin()
+
+    # ✅ F12 Hotkey registrieren
+    keyboard.on_press_key("f12", lambda _: _on_f12())
+    print("[ADMIN] F12 registriert – Admin-Panel jederzeit erreichbar.")
+
     setup_profile()
+
     settings = load_settings()
     wake_word = settings.get("agent_name", "melvin").lower()
 
@@ -197,16 +296,15 @@ if __name__ == "__main__":
         print("Kalibrierung abgeschlossen.")
 
     set_state("idle")
-
-    if TEST_MODE:
-        print("⚠️  TEST MODE AKTIV – Tastatur wird genutzt.")
-    else:
-        speak(f"Assistent für Profil {profile_manager.get_active_profile()} ist bereit. Ich höre auf den Namen {wake_word}.")
+    speak(f"Alles bereit. Ich höre auf den Namen {wake_word}.")
 
     print(f"Assistent bereit. Sage '{wake_word}', um einen Befehl zu starten.")
     print("--------------------------------------------------")
 
     while True:
+        # ✅ Admin-Trigger prüfen
+        _check_admin_trigger()
+
         heard_text = listen(show_feedback=False)
 
         if DEBUG_MODE and heard_text:
@@ -232,7 +330,6 @@ if __name__ == "__main__":
                 speak("Auf Wiedersehen!")
                 break
 
-            # ✅ UI: Denken
             set_state("thinking")
 
             try:
