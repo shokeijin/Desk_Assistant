@@ -11,15 +11,13 @@ from dotenv import load_dotenv
 from plyer import notification
 from pathlib import Path
 
-
-
 load_dotenv()
 
 from assistant.agent import create_assistant
 from assistant.storage.reminder_store import load_reminders, save_reminders
 from assistant.storage.settings_store import load_settings, save_settings
 from assistant import profile_manager
-from websocket_bridge import start_bridge, set_state
+from websocket_bridge import start_bridge, set_state, request_input, _send
 from admin_store import admin_exists, set_admin_pin, verify_admin_pin
 from admin_panel import run_admin_panel
 
@@ -113,6 +111,7 @@ def listen(prompt="", show_feedback=True):
 
 
 def listen_for_name() -> str:
+    """Hört auf einen Namen per Sprache."""
     with microphone as source:
         try:
             audio = recognizer.listen(source, timeout=6, phrase_time_limit=5)
@@ -128,26 +127,29 @@ def listen_for_name() -> str:
 # =====================
 
 def _on_f12():
-    """Wird aufgerufen wenn F12 gedrückt wird."""
     global _admin_triggered
     _admin_triggered = True
 
 
 def _setup_admin_pin():
-    """Einmalige PIN-Einrichtung beim ersten Start."""
-    print("\n🔐 Kein Admin-Account gefunden.")
-    print("Bitte richte jetzt eine 6-stellige Admin-PIN ein.")
+    """Einmalige PIN-Einrichtung per UI."""
+    speak("Kein Admin-Account gefunden. Bitte richte jetzt eine sechsstellige PIN ein.")
+
     while True:
-        pin = input("Neue PIN (6 Ziffern): ").strip()
+        pin = request_input("Neue PIN (6 Ziffern):", input_type="pin", masked=True)
         if len(pin) != 6 or not pin.isdigit():
-            print("❌ Bitte genau 6 Ziffern eingeben.")
+            set_state("idle", text="❌ Bitte genau 6 Ziffern eingeben.")
+            time.sleep(1.5)
             continue
-        confirm = input("PIN bestätigen: ").strip()
+
+        confirm = request_input("PIN bestätigen:", input_type="pin", masked=True)
         if pin != confirm:
-            print("❌ PINs stimmen nicht überein.")
+            set_state("idle", text="❌ PINs stimmen nicht überein. Nochmal versuchen.")
+            time.sleep(1.5)
             continue
+
         set_admin_pin(pin)
-        print("✅ Admin-PIN wurde gesetzt.\n")
+        speak("Admin PIN wurde erfolgreich gesetzt.")
         return
 
 
@@ -158,14 +160,20 @@ def _check_admin_trigger():
         return
     _admin_triggered = False
 
-    print("\n🔐 Admin-Modus: PIN eingeben")
-    pin = input("PIN: ").strip()
+    # PIN über UI abfragen
+    set_state("idle", text="🔐 Admin-Modus – PIN eingeben:")
+    pin = request_input("Admin PIN:", input_type="pin", masked=True)
 
     if verify_admin_pin(pin):
-        print("✅ Zugriff gewährt.")
+        speak("Zugriff gewährt. Admin Panel wird geöffnet.")
+        # Admin Panel läuft weiterhin im Terminal
+        # (vollständige UI-Version wäre ein eigenes Projekt)
+        set_state("idle", text="✅ Admin Panel läuft im Terminal.")
         run_admin_panel()
+        set_state("idle", text="Admin Panel geschlossen.")
     else:
-        print("❌ Falsche PIN. Zugriff verweigert.")
+        speak("Falsche PIN. Zugriff verweigert.")
+        set_state("idle", text="❌ Falsche PIN. Zugriff verweigert.")
 
 
 def check_reminders():
@@ -190,7 +198,7 @@ def check_reminders():
                         app_name='Desktop Assistant',
                         timeout=15
                     )
-                    print(f"[REMINDER] {notification_text}")
+                    speak(notification_text)
                     reminder["done"] = True
                     something_changed = True
             if something_changed:
@@ -201,6 +209,7 @@ def check_reminders():
 
 
 def setup_profile():
+    """Profil-Auswahl per Sprache mit UI-Fallback."""
     profiles_path = Path(__file__).parent / "assistant" / "storage" / "profiles"
     profiles_path.mkdir(exist_ok=True)
     existing_profiles = [p.name for p in profiles_path.iterdir() if p.is_dir()]
@@ -211,21 +220,27 @@ def setup_profile():
     while True:
         if existing_profiles:
             profiles_str = ", ".join(existing_profiles)
-            speak(f"Willkommen! Bekannte Profile sind: {profiles_str}. Wer bist du?")
+            speak(f"Willkommen! Bekannte Profile: {profiles_str}. Wer bist du?")
         else:
             speak("Willkommen! Ich kenne dich noch nicht. Wie heißt du?")
 
-        print("👂 Warte auf Namenseingabe (Sprache oder Tastatur)...")
+        set_state("listening")
+        print("👂 Warte auf Namenseingabe...")
         profile_name = listen_for_name()
 
+        # ✅ Fallback: UI-Eingabe statt Terminal
         if not profile_name:
-            speak("Ich habe dich nicht verstanden. Bitte tippe deinen Namen ein.")
-            profile_name = input("Name: ").strip().capitalize()
+            speak("Ich habe dich nicht verstanden.")
+            profile_name = request_input(
+                "Bitte gib deinen Namen ein:",
+                input_type="text"
+            ).strip().capitalize()
 
         if not profile_name:
-            speak("Der Name darf nicht leer sein. Bitte versuche es nochmal.")
+            speak("Der Name darf nicht leer sein.")
             continue
 
+        set_state("thinking")
         print(f"[DEBUG] Erkannter Name: '{profile_name}'")
 
         # Fuzzy-Matching
@@ -245,16 +260,18 @@ def setup_profile():
             return
         else:
             speak(f"Ich kenne {profile_name} noch nicht. Soll ich ein neues Profil erstellen?")
-            print("Neues Profil erstellen? (ja/nein)")
-            answer = listen_for_name().lower()
-            if not answer:
-                answer = input("(ja/nein): ").strip().lower()
+
+            # ✅ Bestätigung per UI
+            answer = request_input(
+                f"Profil '{profile_name}' erstellen?",
+                input_type="confirm"
+            ).lower()
 
             if answer in ["ja", "j", "yes"]:
                 (profiles_path / profile_name).mkdir()
                 profile_manager.set_active_profile(profile_name)
                 save_settings({})
-                speak(f"Perfekt! Ich habe ein Profil für {profile_name} erstellt. Schön dich kennenzulernen!")
+                speak(f"Perfekt! Profil für {profile_name} erstellt. Schön dich kennenzulernen!")
                 return
             else:
                 speak("Okay, lass es uns nochmal versuchen.")
@@ -266,13 +283,11 @@ if __name__ == "__main__":
     start_bridge()
     time.sleep(0.5)
 
-    # ✅ Admin PIN einrichten falls noch nicht vorhanden
     if not admin_exists():
         _setup_admin_pin()
 
-    # ✅ F12 Hotkey registrieren
     keyboard.on_press_key("f12", lambda _: _on_f12())
-    print("[ADMIN] F12 registriert – Admin-Panel jederzeit erreichbar.")
+    print("[ADMIN] F12 registriert.")
 
     setup_profile()
 
@@ -285,24 +300,21 @@ if __name__ == "__main__":
     try:
         ki_assistant = create_assistant()
     except Exception as e:
-        print(f"[KRITISCHER FEHLER] Assistent konnte nicht gestartet werden: {e}")
-        print("Bitte prüfe deine .env Datei und API-Keys.")
+        print(f"[KRITISCHER FEHLER] {e}")
         exit(1)
 
     if not TEST_MODE:
         with microphone as source:
-            print("Kalibriere Mikrofon für Umgebungsgeräusche...")
+            print("Kalibriere Mikrofon...")
             recognizer.adjust_for_ambient_noise(source, duration=2)
         print("Kalibrierung abgeschlossen.")
 
     set_state("idle")
     speak(f"Alles bereit. Ich höre auf den Namen {wake_word}.")
-
-    print(f"Assistent bereit. Sage '{wake_word}', um einen Befehl zu starten.")
+    print(f"Assistent bereit. Sage '{wake_word}' um zu starten.")
     print("--------------------------------------------------")
 
     while True:
-        # ✅ Admin-Trigger prüfen
         _check_admin_trigger()
 
         heard_text = listen(show_feedback=False)
@@ -319,7 +331,7 @@ if __name__ == "__main__":
                 speak("Ja?")
                 time.sleep(0.8)
                 set_state("listening")
-                command = listen(prompt="\nIch höre... was ist Ihr Befehl?", show_feedback=True)
+                command = listen(prompt="\nIch höre...", show_feedback=True)
 
             if not command:
                 set_state("idle")
@@ -328,6 +340,9 @@ if __name__ == "__main__":
 
             if command.lower() == 'exit':
                 speak("Auf Wiedersehen!")
+                # ✅ UI schließen
+                _send({"type": "quit"})
+                time.sleep(1.5)
                 break
 
             set_state("thinking")
@@ -342,8 +357,8 @@ if __name__ == "__main__":
                 output = "Die Anfrage hat zu lange gedauert."
                 print("[FEHLER] API Timeout.")
             except Exception as e:
-                output = "Es ist ein Fehler aufgetreten. Bitte versuche es erneut."
-                print(f"[FEHLER] Unbekannter Fehler: {e}")
+                output = "Es ist ein Fehler aufgetreten."
+                print(f"[FEHLER] {e}")
 
             print(f"<- Antwort: {output}")
             speak(output)

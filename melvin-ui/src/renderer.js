@@ -5,6 +5,14 @@ const mouthPath = document.getElementById('mouthPath')
 const statusLabel = document.getElementById('statusLabel')
 const responseText = document.getElementById('responseText')
 const closeBtn = document.getElementById('closeBtn')
+const inputOverlay = document.getElementById('inputOverlay')
+const inputPrompt = document.getElementById('inputPrompt')
+const inputField = document.getElementById('inputField')
+const inputFieldWrap = document.getElementById('inputFieldWrap')
+const inputConfirmWrap = document.getElementById('inputConfirmWrap')
+const inputSubmit = document.getElementById('inputSubmit')
+const confirmYes = document.getElementById('confirmYes')
+const confirmNo = document.getElementById('confirmNo')
 
 // --- Fenster schließen ---
 closeBtn.addEventListener('click', () => ipcRenderer.send('close-window'))
@@ -63,13 +71,10 @@ let mouthPhase = 0
 function setState(newState) {
   if (currentState === newState) return
   currentState = newState
-
   document.body.classList.remove(...Object.values(states))
   document.body.classList.add(newState)
   statusLabel.textContent = stateLabels[newState] || newState.toUpperCase()
-
   if (mouthAnimFrame) cancelAnimationFrame(mouthAnimFrame)
-
   if (newState === states.SPEAKING) {
     animateMouthSpeaking()
   } else {
@@ -77,21 +82,14 @@ function setState(newState) {
   }
 }
 
-function setMouthShape(d) {
-  mouthPath.setAttribute('d', d)
-}
+function setMouthShape(d) { mouthPath.setAttribute('d', d) }
 
 function animateMouthSpeaking() {
   mouthPhase += 0.15
   const openAmount = Math.abs(Math.sin(mouthPhase)) * 15
-  const d = `M 20 15 Q 50 ${15 + openAmount} 80 15`
-  setMouthShape(d)
+  setMouthShape(`M 20 15 Q 50 ${15 + openAmount} 80 15`)
   mouthAnimFrame = requestAnimationFrame(animateMouthSpeaking)
 }
-
-// =====================
-// ANTWORT ANZEIGEN
-// =====================
 
 function typeResponse(text) {
   responseText.textContent = ''
@@ -104,7 +102,71 @@ function typeResponse(text) {
 }
 
 // =====================
-// ✅ WEBSOCKET VERBINDUNG ZU PYTHON
+// ✅ EINGABE OVERLAY
+// =====================
+
+let currentInputType = 'text'
+
+function showInputOverlay(prompt, inputType, masked) {
+  currentInputType = inputType
+  inputPrompt.textContent = prompt
+
+  // Reset
+  inputField.value = ''
+  inputField.type = masked ? 'password' : 'text'
+  inputField.placeholder = masked ? '● ● ● ● ● ●' : 'Hier eingeben...'
+
+  // Anzeige je nach Typ
+  if (inputType === 'confirm') {
+    inputFieldWrap.style.display = 'none'
+    inputConfirmWrap.style.display = 'flex'
+    inputSubmit.style.display = 'none'
+  } else {
+    inputFieldWrap.style.display = 'flex'
+    inputConfirmWrap.style.display = 'none'
+    inputSubmit.style.display = 'block'
+  }
+
+  inputOverlay.classList.add('active')
+
+  // Fokus nach kurzer Verzögerung
+  setTimeout(() => {
+    if (inputType !== 'confirm') inputField.focus()
+  }, 100)
+}
+
+function hideInputOverlay() {
+  inputOverlay.classList.remove('active')
+  inputField.value = ''
+}
+
+function submitInput(value) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'input_response', value }))
+  }
+  hideInputOverlay()
+}
+
+// Submit per Button
+inputSubmit.addEventListener('click', () => {
+  const val = inputField.value.trim()
+  if (val) submitInput(val)
+})
+
+// Submit per Enter
+inputField.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const val = inputField.value.trim()
+    if (val) submitInput(val)
+  }
+})
+
+// Bestätigung Ja/Nein
+confirmYes.addEventListener('click', () => submitInput('ja'))
+confirmNo.addEventListener('click', () => submitInput('nein'))
+
+// =====================
+// WEBSOCKET
 // =====================
 
 let ws = null
@@ -114,11 +176,8 @@ function connectWebSocket() {
   ws = new WebSocket('ws://localhost:8765')
 
   ws.onopen = () => {
-    console.log('[WS] Verbunden mit Python Backend ✅')
-    if (reconnectTimer) {
-      clearInterval(reconnectTimer)
-      reconnectTimer = null
-    }
+    console.log('[WS] Verbunden ✅')
+    if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null }
     setState('idle')
   }
 
@@ -128,33 +187,36 @@ function connectWebSocket() {
 
       if (msg.type === 'state') {
         setState(msg.state)
-
-        // Text anzeigen wenn mitgeschickt
-        if (msg.text) {
-          typeResponse(msg.text)
-        }
+        if (msg.text) typeResponse(msg.text)
       }
+
+      // ✅ UI schließen wenn Python beendet wird
+      if (msg.type === 'quit') {
+        ipcRenderer.send('close-window')
+        return
+      }
+
+      // ✅ Eingabe-Anfrage von Python
+      if (msg.type === 'input_request') {
+        showInputOverlay(
+          msg.prompt || 'Eingabe erforderlich',
+          msg.input_type || 'text',
+          msg.masked || false
+        )
+      }
+
     } catch (e) {
-      console.error('[WS] Fehler beim Parsen:', e)
+      console.error('[WS] Fehler:', e)
     }
   }
 
   ws.onclose = () => {
-    console.log('[WS] Verbindung getrennt – versuche neu...')
-    // Alle 2 Sekunden neu versuchen
-    if (!reconnectTimer) {
-      reconnectTimer = setInterval(connectWebSocket, 2000)
-    }
+    if (!reconnectTimer) reconnectTimer = setInterval(connectWebSocket, 2000)
   }
 
-  ws.onerror = () => {
-    // Fehler werden durch onclose behandelt
-  }
+  ws.onerror = () => {}
 }
 
-// Verbindung herstellen
 connectWebSocket()
-
-// Startanimation während wir auf Python warten
 setState('idle')
 responseText.textContent = 'Warte auf Verbindung mit Melvin...'
