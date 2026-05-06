@@ -1,32 +1,55 @@
+"""
+Router
+======
+Klassifiziert eingehende Nutzeranfragen in Kategorien,
+damit der Agent das passende Tool oder die direkte Chat-Antwort wählt.
+
+Kategorien:
+  - todo:     Aufgabenverwaltung (hinzufügen, anzeigen, löschen)
+  - reminder: Erinnerungen mit Zeitangabe
+  - profile:  Persönliche Nutzerdaten
+  - math:     Mathematische Berechnungen
+  - web:      Aktuelle Informationen aus dem Internet
+  - chat:     Smalltalk und allgemeine Fragen ohne Tool-Bedarf
+"""
+
 from typing import Literal
-from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
+
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 
 class Route(BaseModel):
-    """Klassifizierung der Benutzeranfrage."""
-    # ✅ FIX: "math" und "web" als eigene Kategorien hinzugefügt
+    """Datenmodell für die Routing-Entscheidung des LLM."""
+
     category: Literal["todo", "reminder", "profile", "math", "web", "chat"] = Field(
-        description="Die Kategorie der Anfrage."
+        description="Die Kategorie der Nutzeranfrage."
     )
 
 
+# Systemprompt für den Router – temperature=0 für deterministische Entscheidungen
+_ROUTER_SYSTEM_PROMPT = """Du bist ein Routing-Experte für einen KI-Desktop-Assistenten.
+Klassifiziere die Nutzeranfrage in genau eine der folgenden Kategorien:
+
+- todo:     Aufgaben auflisten, hinzufügen oder löschen
+- reminder: Erinnerungen oder Termine setzen (enthalten meist Zeitangaben)
+- profile:  Name, Alter oder andere persönliche Daten des Nutzers
+- math:     Mathematische Berechnungen, Formeln oder Gleichungen
+- web:      Aktuelle Informationen, Nachrichten, Wetter oder unbekannte Fakten
+- chat:     Begrüßungen, Smalltalk und allgemeine Fragen ohne Tool-Bedarf"""
+
+
 def create_router():
+    """
+    Erstellt und gibt den konfigurierten Router zurück.
+    Der Router nutzt structured output, um immer eine valide Kategorie zu liefern.
+    """
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     structured_llm = llm.with_structured_output(Route)
 
-    system = """Du bist ein Routing-Experte für einen Desktop-Assistenten.
-    Klassifiziere die Anfrage in genau eine Kategorie:
-    - todo: Aufgaben listen, hinzufügen, löschen.
-    - reminder: Erinnerungen oder Termine (brauchen oft Zeitangaben).
-    - profile: Name des Nutzers oder persönliche Daten.
-    - math: Mathematische Berechnungen, Formeln, Gleichungen.
-    - web: Aktuelle Informationen, Nachrichten, Wetter, Fakten die du nicht weißt.
-    - chat: Begrüßung, Smalltalk, allgemeine Fragen ohne Tool-Bedarf."""
-
     prompt = ChatPromptTemplate.from_messages([
-        ("system", system),
+        ("system", _ROUTER_SYSTEM_PROMPT),
         ("human", "{input}"),
     ])
 

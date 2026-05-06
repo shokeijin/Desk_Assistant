@@ -1,16 +1,30 @@
-# --- NEUE DATEI: assistant/profile_manager.py ---
+"""
+Profil-Manager
+==============
+Verwaltet das aktuell aktive Nutzerprofil für die laufende Sitzung.
+Das aktive Profil wird beim Start gesetzt und von allen Store-Modulen
+verwendet, um die korrekten Datenpfade zu ermitteln.
+"""
 
-# Diese Variable speichert den Namen des aktuell aktiven Profils.
-_active_profile = None
+# Interner Speicher für den aktuell aktiven Profilnamen
+_active_profile: str | None = None
 
-def set_active_profile(profile_name: str):
-    """Setzt das globale aktive Profil für die Sitzung."""
+
+def set_active_profile(profile_name: str) -> None:
+    """
+    Setzt das aktive Profil für die aktuelle Sitzung.
+    Muss vor dem ersten Zugriff auf Store-Funktionen aufgerufen werden.
+    """
     global _active_profile
-    print(f"✅ Profil '{profile_name}' ist jetzt aktiv.")
     _active_profile = profile_name
+    print(f"✅ Profil '{profile_name}' ist jetzt aktiv.")
+
 
 def get_active_profile() -> str:
-    """Gibt den Namen des aktiven Profils zurück."""
+    """
+    Gibt den Namen des aktuell aktiven Profils zurück.
+    Wirft einen ValueError wenn noch kein Profil gesetzt wurde.
+    """
     if _active_profile is None:
         raise ValueError("Es wurde kein aktives Profil gesetzt!")
     return _active_profile

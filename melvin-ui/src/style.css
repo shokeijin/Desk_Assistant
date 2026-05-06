@@ -1,26 +1,52 @@
+/*
+ * Melvin UI – Stylesheet
+ * ======================
+ * Futuristisches HUD-Design inspiriert von Iron Man's J.A.R.V.I.S.
+ * Farbpalette: Dunkelblau-Schwarz als Basis, Cyan als Akzentfarbe.
+ *
+ * Zustandsklassen (werden per JavaScript auf <body> gesetzt):
+ *   .idle       – Bereit, wartet auf Wake-Word
+ *   .listening  – Hört auf Spracheingabe (Cyan-Puls)
+ *   .thinking   – Verarbeitet Befehl (Gelb-Rotation)
+ *   .speaking   – Gibt Antwort aus (Grün-Animation)
+ */
+
+/* ---------------------------------------------------------------------------
+   CSS-Variablen – zentrale Farbpalette und Effekte
+--------------------------------------------------------------------------- */
+
 :root {
-  --primary: #00d4ff;
-  --primary-dim: rgba(0, 212, 255, 0.15);
-  --accent: #ff4444;
-  --bg: #050a0f;
-  --bg-panel: rgba(8, 20, 30, 0.95);
-  --text: #c8e8f0;
-  --text-dim: rgba(200, 232, 240, 0.4);
-  --glow: 0 0 20px rgba(0, 212, 255, 0.6);
-  --glow-strong: 0 0 40px rgba(0, 212, 255, 0.9);
+  --primary:     #00d4ff;                      /* Cyan – Hauptakzentfarbe */
+  --primary-dim: rgba(0, 212, 255, 0.15);      /* Gedimmtes Cyan für Flächen */
+  --accent:      #ff4444;                      /* Rot – für Schließen-Button */
+  --bg-panel:    rgba(8, 20, 30, 0.95);        /* Dunkles Panel mit leichter Transparenz */
+  --text:        #c8e8f0;                      /* Hellblau-Weiß für Fließtext */
+  --glow:        0 0 20px rgba(0, 212, 255, 0.6);
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* ---------------------------------------------------------------------------
+   Reset und Basis
+--------------------------------------------------------------------------- */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 body {
-  background: transparent;
+  background: transparent;        /* Fenster-Hintergrund ist durchsichtig */
   font-family: 'Rajdhani', sans-serif;
   color: var(--text);
-  user-select: none;
+  user-select: none;               /* Kein Textmarkieren – fühlt sich wie App an */
   overflow: hidden;
   width: 400px;
   height: 600px;
 }
+
+/* ---------------------------------------------------------------------------
+   Hauptcontainer
+--------------------------------------------------------------------------- */
 
 .container {
   width: 400px;
@@ -34,9 +60,12 @@ body {
   padding: 0 20px 20px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 0 60px rgba(0, 212, 255, 0.1), inset 0 0 60px rgba(0, 212, 255, 0.03);
+  box-shadow:
+    0 0 60px rgba(0, 212, 255, 0.1),
+    inset 0 0 60px rgba(0, 212, 255, 0.03);
 }
 
+/* Subtiles Raster-Muster im Hintergrund – typisch für HUD-Designs */
 .container::before {
   content: '';
   position: absolute;
@@ -48,6 +77,10 @@ body {
   pointer-events: none;
 }
 
+/* ---------------------------------------------------------------------------
+   Titelleiste
+--------------------------------------------------------------------------- */
+
 .titlebar {
   width: 100%;
   height: 44px;
@@ -58,7 +91,7 @@ body {
   cursor: grab;
   border-bottom: 1px solid rgba(0, 212, 255, 0.15);
   margin-bottom: 10px;
-  -webkit-app-region: drag;
+  -webkit-app-region: drag;  /* Electron: Titelleiste als Drag-Handle definieren */
 }
 
 .titlebar:active { cursor: grabbing; }
@@ -82,7 +115,7 @@ body {
   cursor: pointer;
   font-size: 11px;
   transition: all 0.2s;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: no-drag;  /* Dieser Button soll nicht draggen */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -93,6 +126,10 @@ body {
   box-shadow: 0 0 12px rgba(255, 68, 68, 0.5);
 }
 
+/* ---------------------------------------------------------------------------
+   Gesicht
+--------------------------------------------------------------------------- */
+
 .face-container {
   position: relative;
   width: 200px;
@@ -100,6 +137,7 @@ body {
   margin: 10px 0;
 }
 
+/* Äußerer Statusring – Farbe und Animation zeigen den aktuellen Zustand */
 .status-ring {
   position: absolute;
   inset: -8px;
@@ -124,10 +162,13 @@ body {
   border: 2px solid rgba(0, 212, 255, 0.4);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 0 30px rgba(0, 212, 255, 0.2), inset 0 0 40px rgba(0, 212, 255, 0.05);
+  box-shadow:
+    0 0 30px rgba(0, 212, 255, 0.2),
+    inset 0 0 40px rgba(0, 212, 255, 0.05);
   transition: all 0.4s ease;
 }
 
+/* Animierte Scan-Linie von oben nach unten */
 .scanline {
   position: absolute;
   width: 100%;
@@ -139,12 +180,13 @@ body {
 }
 
 @keyframes scan {
-  0% { top: -2px; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
+  0%   { top: -2px; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
   100% { top: 100%; opacity: 0; }
 }
 
+/* Augen */
 .eyes {
   display: flex;
   justify-content: space-around;
@@ -184,6 +226,7 @@ body {
   z-index: 1;
 }
 
+/* Mund (SVG-Pfad wird per JS animiert) */
 .mouth-container {
   display: flex;
   justify-content: center;
@@ -196,6 +239,7 @@ body {
   overflow: visible;
 }
 
+/* Wangen-LEDs – kleine pulsierende Punkte */
 .cheek {
   position: absolute;
   width: 8px;
@@ -207,13 +251,17 @@ body {
   animation: cheekPulse 2s ease-in-out infinite;
 }
 
-.left-cheek { left: 18px; }
+.left-cheek  { left: 18px; }
 .right-cheek { right: 18px; }
 
 @keyframes cheekPulse {
   0%, 100% { opacity: 0.3; box-shadow: 0 0 4px var(--primary); }
-  50% { opacity: 0.8; box-shadow: 0 0 12px var(--primary); }
+  50%       { opacity: 0.8; box-shadow: 0 0 12px var(--primary); }
 }
+
+/* ---------------------------------------------------------------------------
+   Status-Label und Antwort-Box
+--------------------------------------------------------------------------- */
 
 .status-label {
   font-family: 'Orbitron', monospace;
@@ -238,7 +286,7 @@ body {
   max-height: 180px;
 }
 
-.response-box::-webkit-scrollbar { width: 3px; }
+.response-box::-webkit-scrollbar       { width: 3px; }
 .response-box::-webkit-scrollbar-track { background: transparent; }
 .response-box::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.3); border-radius: 2px; }
 
@@ -249,6 +297,10 @@ body {
   color: var(--text);
   letter-spacing: 0.5px;
 }
+
+/* ---------------------------------------------------------------------------
+   Audio-Visualizer
+--------------------------------------------------------------------------- */
 
 .visualizer {
   display: flex;
@@ -268,66 +320,75 @@ body {
   transition: height 0.1s ease;
 }
 
-/* ===================== */
-/* ZUSTANDS-ANIMATIONEN  */
-/* ===================== */
+/* ---------------------------------------------------------------------------
+   Zustands-Animationen
+   Alle visuellen Änderungen werden über CSS-Klassen auf <body> gesteuert
+--------------------------------------------------------------------------- */
 
-body.listening .face { border-color: rgba(0, 212, 255, 0.8); box-shadow: 0 0 40px rgba(0, 212, 255, 0.4), inset 0 0 40px rgba(0, 212, 255, 0.08); }
+/* Zuhören – Cyan, große Augen, pulsierende Balken */
+body.listening .face {
+  border-color: rgba(0, 212, 255, 0.8);
+  box-shadow: 0 0 40px rgba(0, 212, 255, 0.4), inset 0 0 40px rgba(0, 212, 255, 0.08);
+}
 body.listening .status-ring { border-color: rgba(0, 212, 255, 0.6); animation: ringPulse 1s ease-in-out infinite; }
-body.listening .eye { height: 28px; border-color: rgba(0, 212, 255, 0.9); }
-body.listening .pupil { width: 14px; height: 14px; }
-body.listening .bar { animation: listenBar 0.6s ease-in-out infinite alternate; }
+body.listening .eye         { height: 28px; border-color: rgba(0, 212, 255, 0.9); }
+body.listening .pupil       { width: 14px; height: 14px; }
+body.listening .bar         { animation: listenBar 0.6s ease-in-out infinite alternate; }
 body.listening .bar:nth-child(odd) { animation-delay: 0.1s; }
 body.listening .bar:nth-child(3n) { animation-delay: 0.2s; }
 
 @keyframes listenBar {
-  from { height: 4px; background: rgba(0, 212, 255, 0.3); }
-  to { height: 28px; background: rgba(0, 212, 255, 0.8); }
+  from { height: 4px;  background: rgba(0, 212, 255, 0.3); }
+  to   { height: 28px; background: rgba(0, 212, 255, 0.8); }
 }
 
-body.thinking .face { border-color: rgba(255, 180, 0, 0.6); box-shadow: 0 0 30px rgba(255, 180, 0, 0.2); }
-body.thinking .status-ring { border-color: rgba(255, 180, 0, 0.4); animation: thinkSpin 2s linear infinite; }
-body.thinking .pupil { background: #ffb400; box-shadow: 0 0 10px #ffb400; animation: thinkEye 1.5s ease-in-out infinite; }
+/* Denken – Gelb, rotierender Ring, wandernde Augen */
+body.thinking .face         { border-color: rgba(255, 180, 0, 0.6); box-shadow: 0 0 30px rgba(255, 180, 0, 0.2); }
+body.thinking .status-ring  { border-color: rgba(255, 180, 0, 0.4); animation: thinkSpin 2s linear infinite; }
+body.thinking .pupil        { background: #ffb400; box-shadow: 0 0 10px #ffb400; animation: thinkEye 1.5s ease-in-out infinite; }
 body.thinking .status-label { color: #ffb400; }
 
 @keyframes thinkSpin {
-  from { transform: rotate(0deg); border-top-color: rgba(255, 180, 0, 0.8); }
-  to { transform: rotate(360deg); border-top-color: rgba(255, 180, 0, 0.8); }
+  from { transform: rotate(0deg);   border-top-color: rgba(255, 180, 0, 0.8); }
+  to   { transform: rotate(360deg); border-top-color: rgba(255, 180, 0, 0.8); }
 }
 @keyframes thinkEye {
   0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
+  25%       { transform: translateX(-4px); }
+  75%       { transform: translateX(4px); }
 }
 
-body.speaking .face { border-color: rgba(0, 255, 120, 0.6); box-shadow: 0 0 30px rgba(0, 255, 120, 0.2); }
-body.speaking .status-ring { border-color: rgba(0, 255, 120, 0.4); animation: ringPulse 0.5s ease-in-out infinite; }
-body.speaking .pupil { background: #00ff78; box-shadow: 0 0 10px #00ff78; }
+/* Sprechen – Grün, schneller Ring-Puls, animierte Balken */
+body.speaking .face         { border-color: rgba(0, 255, 120, 0.6); box-shadow: 0 0 30px rgba(0, 255, 120, 0.2); }
+body.speaking .status-ring  { border-color: rgba(0, 255, 120, 0.4); animation: ringPulse 0.5s ease-in-out infinite; }
+body.speaking .pupil        { background: #00ff78; box-shadow: 0 0 10px #00ff78; }
 body.speaking .status-label { color: #00ff78; }
-body.speaking .bar { animation: speakBar 0.3s ease-in-out infinite alternate; }
+body.speaking .bar          { animation: speakBar 0.3s ease-in-out infinite alternate; }
 body.speaking .bar:nth-child(even) { animation-delay: 0.15s; }
-body.speaking .bar:nth-child(3n) { animation-delay: 0.05s; }
+body.speaking .bar:nth-child(3n)   { animation-delay: 0.05s; }
 
 @keyframes speakBar {
-  from { height: 4px; background: rgba(0, 255, 120, 0.3); }
-  to { height: 24px; background: rgba(0, 255, 120, 0.8); }
+  from { height: 4px;  background: rgba(0, 255, 120, 0.3); }
+  to   { height: 24px; background: rgba(0, 255, 120, 0.8); }
 }
 
+/* Bereit – langsamer Ring-Puls */
 body.idle .status-ring { animation: idlePulse 3s ease-in-out infinite; }
 
 @keyframes idlePulse {
   0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.8; }
+  50%       { opacity: 0.8; }
 }
 
 @keyframes ringPulse {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.04); opacity: 1; }
+  0%, 100% { transform: scale(1);    opacity: 0.6; }
+  50%       { transform: scale(1.04); opacity: 1; }
 }
 
-/* ===================== */
-/* ✅ EINGABE OVERLAY     */
-/* ===================== */
+/* ---------------------------------------------------------------------------
+   Eingabe-Overlay
+   Wird über die gesamte UI geblendet wenn Python eine Eingabe anfordert
+--------------------------------------------------------------------------- */
 
 .input-overlay {
   position: fixed;
@@ -343,6 +404,7 @@ body.idle .status-ring { animation: idlePulse 3s ease-in-out infinite; }
   border-radius: 16px;
 }
 
+/* Sichtbar wenn Python eine Eingabe anfordert */
 .input-overlay.active {
   opacity: 1;
   pointer-events: all;
@@ -418,7 +480,6 @@ body.idle .status-ring { animation: idlePulse 3s ease-in-out infinite; }
   border-color: rgba(0, 255, 120, 0.4);
   color: #00ff78;
 }
-
 .yes-btn:hover {
   background: rgba(0, 255, 120, 0.2);
   box-shadow: 0 0 12px rgba(0, 255, 120, 0.3);
@@ -429,7 +490,6 @@ body.idle .status-ring { animation: idlePulse 3s ease-in-out infinite; }
   border-color: rgba(255, 68, 68, 0.4);
   color: #ff4444;
 }
-
 .no-btn:hover {
   background: rgba(255, 68, 68, 0.2);
   box-shadow: 0 0 12px rgba(255, 68, 68, 0.3);
