@@ -1,0 +1,37 @@
+# M.E.L.V.I.N – Python Abhängigkeiten
+# Installation: pip install -r requirements.txt
+
+# ── KI & LangChain ──
+langchain
+langchain-openai
+langchain-community
+openai
+
+# ── Spracheingabe ──
+SpeechRecognition
+pyaudio
+
+# ── Sprachausgabe ──
+edge-tts
+pygame
+
+# ── Websuche ──
+tavily-python
+
+# ── Desktop Benachrichtigungen ──
+plyer
+
+# ── Mathematik ──
+numexpr
+
+# ── WebSocket (Python ↔ Electron) ──
+websockets
+
+# ── Hotkeys (Admin Panel) ──
+keyboard
+
+# ── Umgebungsvariablen ──
+python-dotenv
+
+# ── Datenvalidierung (LangChain intern) ──
+pydantic
